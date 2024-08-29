@@ -1,5 +1,5 @@
 [package]
-name = "crud_base"
+name = "rust-framework"
 version = "0.1.0"
 edition = "2021"
 description = "基于sea-orm二次封装CRUD基础实现"
