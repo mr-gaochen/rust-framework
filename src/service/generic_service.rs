@@ -40,7 +40,7 @@ where
     Pk: Into<<E::PrimaryKey as PrimaryKeyTrait>::ValueType> + Send + Sync + Clone,
     D: Repo<E, Pk> + Send + Sync,
 {
-    pub async fn find_by_id(&self, db: &DatabaseConnection, id: Pk) -> Result<Option<E::Model>, DbErr> {
+    async fn find_by_id(&self, db: &DatabaseConnection, id: Pk) -> Result<Option<E::Model>, DbErr> {
         self.dao.find_by_id(db, id).await
     }
 
