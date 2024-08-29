@@ -13,7 +13,7 @@ where
     Pk: Into<<E::PrimaryKey as PrimaryKeyTrait>::ValueType> + Send + Sync,
 {
     /// 查找某个实体
-    pub async fn find_by_id(&self, db: &DatabaseConnection, id: Pk) -> Result<Option<E::Model>, DbErr>;
+    async fn find_by_id(&self, db: &DatabaseConnection, id: Pk) -> Result<Option<E::Model>, DbErr>;
 
     // 条件查询某个实体
     async fn find_one_condition<F>(
