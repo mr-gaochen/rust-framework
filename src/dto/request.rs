@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
+use utoipa::{IntoParams, ToSchema};
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Dummy, ToSchema, IntoParams, Clone)]
 pub struct PageQueryParam {
     pub page_num: u64,
     pub page_size: u64,
