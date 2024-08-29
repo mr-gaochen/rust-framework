@@ -1,7 +1,8 @@
 use async_trait::async_trait;
+use sea_orm::sea_query::IntoCondition;
 use sea_orm::{
     ActiveModelTrait, DatabaseConnection, DbErr, EntityTrait, Order, PaginatorTrait,
-    PrimaryKeyTrait, QueryOrder,
+    PrimaryKeyTrait, QueryFilter, QueryOrder,
 };
 use sea_orm::{DeleteResult, IntoActiveModel};
 
@@ -45,8 +46,30 @@ where
         E::find_by_id(id_value).one(db).await
     }
 
+    async fn find_one_condition<F>(
+        &self,
+        db: &DatabaseConnection,
+        filter: F,
+    ) -> Result<Option<E::Model>, DbErr>
+    where
+        F: IntoCondition + Send,
+    {
+        E::find().filter(filter).one(db).await
+    }
+
     async fn find_list(&self, db: &DatabaseConnection) -> Result<Vec<E::Model>, DbErr> {
         E::find().all(db).await
+    }
+
+    async fn find_by_list_condition<F>(
+        &self,
+        db: &DatabaseConnection,
+        filter: F,
+    ) -> Result<Vec<E::Model>, DbErr>
+    where
+        F: IntoCondition + Send,
+    {
+        E::find().filter(filter.into_condition()).all(db).await
     }
 
     async fn find_page(
@@ -70,6 +93,21 @@ where
         Ok((models, items_total))
     }
 
+    async fn find_page_condition<F>(
+        &self,
+        db: &DatabaseConnection,
+        filter: F,
+        param: &PageQueryParam,
+    ) -> Result<(Vec<E::Model>, u64), DbErr>
+    where
+        F: IntoCondition + Send,
+    {
+        let paginator = E::find().filter(filter).paginate(db, param.page_size);
+        let items_total = paginator.num_items().await.unwrap();
+        let models = paginator.fetch_page(param.page_num).await?;
+        Ok((models, items_total))
+    }
+
     async fn create(&self, db: &DatabaseConnection, model: E::Model) -> Result<E::Model, DbErr> {
         // 将 E::Model 转换为 ActiveModel
         let active_model = E::ActiveModel::from(model);
@@ -81,8 +119,37 @@ where
         active_model.update(db).await
     }
 
+    async fn update_by_condition<F>(
+        &self,
+        db: &DatabaseConnection,
+        filter: F,
+        model: E::Model,
+    ) -> Result<u64, DbErr>
+    where
+        F: IntoCondition + Send,
+    {
+        let active_model: E::ActiveModel = model.into_active_model();
+        let result = E::update_many()
+            .filter(filter.into_condition())
+            .set(active_model)
+            .exec(db)
+            .await?;
+        Ok(result.rows_affected)
+    }
+
     async fn delete(&self, db: &DatabaseConnection, id: Pk) -> Result<DeleteResult, DbErr> {
         let id_value = id.into();
         E::delete_by_id(id_value).exec(db).await
+    }
+
+    async fn delete_batch<C>(
+        &self,
+        db: &DatabaseConnection,
+        condition: C,
+    ) -> Result<DeleteResult, DbErr>
+    where
+        C: IntoCondition + Send,
+    {
+        E::delete_many().filter(condition).exec(db).await
     }
 }
