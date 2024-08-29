@@ -1,6 +1,6 @@
 [package]
 name = "rust-framework"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "基于sea-orm二次封装CRUD基础实现"
 repository = "https://github.com/gaochen/crud_base_rust"
