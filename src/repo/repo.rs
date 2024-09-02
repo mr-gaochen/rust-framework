@@ -1,9 +1,9 @@
+use crate::dto::request::PageQueryParam;
 use async_trait::async_trait;
+use sea_orm::prelude::*;
 use sea_orm::sea_query::IntoCondition;
 use sea_orm::DeleteResult;
 use sea_orm::{DatabaseConnection, DbErr, EntityTrait, PrimaryKeyTrait};
-
-use crate::dto::request::PageQueryParam;
 
 /// 定义 Dao Trait，泛型 E 是 Entity 类型，Pk 是主键类型
 #[async_trait]
@@ -64,10 +64,11 @@ where
         &self,
         db: &DatabaseConnection,
         filter: F,
-        model: E::Model,
+        column_updates: Vec<(E::Column, Value)>,
     ) -> Result<u64, DbErr>
     where
-        F: IntoCondition + Send;
+        F: IntoCondition + Send,
+        E: EntityTrait;
 
     // 删除实体
     async fn delete(&self, db: &DatabaseConnection, id: Pk) -> Result<DeleteResult, DbErr>;

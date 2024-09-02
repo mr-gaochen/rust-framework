@@ -1,12 +1,12 @@
+use crate::dto::request::{Direction, PageQueryParam};
 use async_trait::async_trait;
+use sea_orm::prelude::*;
 use sea_orm::sea_query::IntoCondition;
 use sea_orm::{
     ActiveModelTrait, DatabaseConnection, DbErr, EntityTrait, Order, PaginatorTrait,
     PrimaryKeyTrait, QueryFilter, QueryOrder,
 };
 use sea_orm::{DeleteResult, IntoActiveModel};
-
-use crate::dto::request::{Direction, PageQueryParam};
 
 use super::repo::Repo;
 
@@ -123,18 +123,20 @@ where
         &self,
         db: &DatabaseConnection,
         filter: F,
-        model: E::Model,
+        column_updates: Vec<(E::Column, Value)>,
     ) -> Result<u64, DbErr>
     where
         F: IntoCondition + Send,
+        E: EntityTrait,
     {
-        let active_model: E::ActiveModel = model.into_active_model();
-        let result = E::update_many()
-            .filter(filter.into_condition())
-            .set(active_model)
-            .exec(db)
-            .await?;
-        Ok(result.rows_affected)
+        let mut update_query = E::update_many().filter(filter.into_condition());
+
+        for (column, value) in column_updates {
+               update_query = update_query.col_expr(column, Expr::value(value));
+           }
+       
+           let result = update_query.exec(db).await?;
+           Ok(result.rows_affected)
     }
 
     async fn delete(&self, db: &DatabaseConnection, id: Pk) -> Result<DeleteResult, DbErr> {

@@ -1,9 +1,9 @@
+use crate::{dto::request::PageQueryParam, repo::repo::Repo};
 use async_trait::async_trait;
+use sea_orm::prelude::*;
 use sea_orm::{
     sea_query::IntoCondition, DatabaseConnection, DbErr, DeleteResult, EntityTrait, PrimaryKeyTrait,
 };
-
-use crate::{dto::request::PageQueryParam, repo::repo::Repo};
 
 use super::service::Service;
 
@@ -105,12 +105,14 @@ where
         &self,
         db: &DatabaseConnection,
         filter: F,
-        model: E::Model,
+        column_updates: Vec<(E::Column, Value)>,
     ) -> Result<u64, DbErr>
     where
         F: IntoCondition + Send,
     {
-        self.dao.update_by_condition(db, filter, model).await
+        self.dao
+            .update_by_condition(db, filter, column_updates)
+            .await
     }
 
     async fn delete(&self, db: &DatabaseConnection, id: Pk) -> Result<DeleteResult, DbErr> {
