@@ -1,12 +1,13 @@
 use crate::dto::request::{Direction, PageQueryParam};
 use async_trait::async_trait;
 use sea_orm::sea_query::IntoCondition;
-use sea_orm::{prelude::*, TransactionTrait};
+use sea_orm::{prelude::*, DatabaseTransaction, TransactionTrait};
 use sea_orm::{
     ActiveModelTrait, DatabaseConnection, DbErr, EntityTrait, Order, PaginatorTrait,
     PrimaryKeyTrait, QueryFilter, QueryOrder,
 };
 use sea_orm::{DeleteResult, IntoActiveModel};
+use std::sync::Arc;
 
 use super::repo::Repo;
 
@@ -18,7 +19,7 @@ where
 {
     _entity: std::marker::PhantomData<E>,
     _pk: std::marker::PhantomData<Pk>,
-    db: DatabaseConnection,
+    db: Arc<DatabaseConnection>,
 }
 
 impl<E, Pk> GenericRepo<E, Pk>
@@ -26,11 +27,30 @@ where
     E: EntityTrait,
     Pk: Into<<E::PrimaryKey as PrimaryKeyTrait>::ValueType> + Send + Sync + Clone,
 {
-    pub fn new(db: DatabaseConnection) -> Self {
+    pub fn new(db: Arc<DatabaseConnection>) -> Self {
         Self {
             _entity: std::marker::PhantomData,
             _pk: std::marker::PhantomData,
             db,
+        }
+    }
+
+    // 事务操作的通用方法
+    async fn run_in_transaction<T, F>(&self, operation: F) -> Result<T, DbErr>
+    where
+        F: FnOnce(&DatabaseTransaction) -> Result<T, DbErr> + Send,
+    {
+        let txn = self.db.begin().await?;
+        let result = operation(&txn);
+        match result {
+            Ok(res) => {
+                txn.commit().await?;
+                Ok(res)
+            }
+            Err(e) => {
+                txn.rollback().await?;
+                Err(e)
+            }
         }
     }
 }
@@ -45,18 +65,18 @@ where
 {
     async fn find_by_id(&self, id: Pk) -> Result<Option<E::Model>, DbErr> {
         let id_value = id.into();
-        E::find_by_id(id_value).one(&self.db).await
+        E::find_by_id(id_value).one(self.db.as_ref()).await
     }
 
     async fn find_one_condition<F>(&self, filter: F) -> Result<Option<E::Model>, DbErr>
     where
         F: IntoCondition + Send,
     {
-        E::find().filter(filter).one(&self.db).await
+        E::find().filter(filter).one(self.db.as_ref()).await
     }
 
     async fn find_list(&self) -> Result<Vec<E::Model>, DbErr> {
-        E::find().all(&self.db).await
+        E::find().all(self.db.as_ref()).await
     }
 
     async fn find_by_list_condition<F>(&self, filter: F) -> Result<Vec<E::Model>, DbErr>
@@ -65,7 +85,7 @@ where
     {
         E::find()
             .filter(filter.into_condition())
-            .all(&self.db)
+            .all(self.db.as_ref())
             .await
     }
 
@@ -80,7 +100,7 @@ where
                 _ => select = select.order_by(order_expr, Order::Asc),
             }
         }
-        let paginator = select.paginate(&self.db, param.page_size);
+        let paginator = select.paginate(self.db.as_ref(), param.page_size);
         let items_total = paginator.num_items().await.unwrap();
         let models = paginator.fetch_page(param.page_num).await?;
         Ok((models, items_total))
@@ -94,7 +114,7 @@ where
     where
         F: IntoCondition + Send,
     {
-        let paginator = E::find().filter(filter).paginate(&self.db, param.page_size);
+        let paginator = E::find().filter(filter).paginate(self.db, param.page_size);
         let items_total = paginator.num_items().await.unwrap();
         let models = paginator.fetch_page(param.page_num).await?;
         Ok((models, items_total))
