@@ -1,7 +1,7 @@
 use crate::dto::request::{Direction, PageQueryParam};
 use async_trait::async_trait;
-use sea_orm::prelude::*;
 use sea_orm::sea_query::IntoCondition;
+use sea_orm::{prelude::*, TransactionTrait};
 use sea_orm::{
     ActiveModelTrait, DatabaseConnection, DbErr, EntityTrait, Order, PaginatorTrait,
     PrimaryKeyTrait, QueryFilter, QueryOrder,
@@ -18,6 +18,7 @@ where
 {
     _entity: std::marker::PhantomData<E>,
     _pk: std::marker::PhantomData<Pk>,
+    db: DatabaseConnection,
 }
 
 impl<E, Pk> GenericRepo<E, Pk>
@@ -25,10 +26,11 @@ where
     E: EntityTrait,
     Pk: Into<<E::PrimaryKey as PrimaryKeyTrait>::ValueType> + Send + Sync + Clone,
 {
-    pub fn new() -> Self {
+    pub fn new(db: DatabaseConnection) -> Self {
         Self {
             _entity: std::marker::PhantomData,
             _pk: std::marker::PhantomData,
+            db,
         }
     }
 }
@@ -41,42 +43,33 @@ where
     E::Model: Send + Sync + IntoActiveModel<E::ActiveModel>,
     E::ActiveModel: ActiveModelTrait<Entity = E> + Send + Sync + From<E::Model>,
 {
-    async fn find_by_id(&self, db: &DatabaseConnection, id: Pk) -> Result<Option<E::Model>, DbErr> {
+    async fn find_by_id(&self, id: Pk) -> Result<Option<E::Model>, DbErr> {
         let id_value = id.into();
-        E::find_by_id(id_value).one(db).await
+        E::find_by_id(id_value).one(&self.db).await
     }
 
-    async fn find_one_condition<F>(
-        &self,
-        db: &DatabaseConnection,
-        filter: F,
-    ) -> Result<Option<E::Model>, DbErr>
+    async fn find_one_condition<F>(&self, filter: F) -> Result<Option<E::Model>, DbErr>
     where
         F: IntoCondition + Send,
     {
-        E::find().filter(filter).one(db).await
+        E::find().filter(filter).one(&self.db).await
     }
 
-    async fn find_list(&self, db: &DatabaseConnection) -> Result<Vec<E::Model>, DbErr> {
-        E::find().all(db).await
+    async fn find_list(&self) -> Result<Vec<E::Model>, DbErr> {
+        E::find().all(&self.db).await
     }
 
-    async fn find_by_list_condition<F>(
-        &self,
-        db: &DatabaseConnection,
-        filter: F,
-    ) -> Result<Vec<E::Model>, DbErr>
+    async fn find_by_list_condition<F>(&self, filter: F) -> Result<Vec<E::Model>, DbErr>
     where
         F: IntoCondition + Send,
     {
-        E::find().filter(filter.into_condition()).all(db).await
+        E::find()
+            .filter(filter.into_condition())
+            .all(&self.db)
+            .await
     }
 
-    async fn find_page(
-        &self,
-        db: &DatabaseConnection,
-        param: &PageQueryParam,
-    ) -> Result<(Vec<E::Model>, u64), DbErr> {
+    async fn find_page(&self, param: &PageQueryParam) -> Result<(Vec<E::Model>, u64), DbErr> {
         let mut select = E::find();
         if let Some(sort_by) = &param.sort_by {
             let order_expr = sea_orm::sea_query::Expr::expr(
@@ -87,7 +80,7 @@ where
                 _ => select = select.order_by(order_expr, Order::Asc),
             }
         }
-        let paginator = select.paginate(db, param.page_size);
+        let paginator = select.paginate(&self.db, param.page_size);
         let items_total = paginator.num_items().await.unwrap();
         let models = paginator.fetch_page(param.page_num).await?;
         Ok((models, items_total))
@@ -95,33 +88,59 @@ where
 
     async fn find_page_condition<F>(
         &self,
-        db: &DatabaseConnection,
         filter: F,
         param: &PageQueryParam,
     ) -> Result<(Vec<E::Model>, u64), DbErr>
     where
         F: IntoCondition + Send,
     {
-        let paginator = E::find().filter(filter).paginate(db, param.page_size);
+        let paginator = E::find().filter(filter).paginate(&self.db, param.page_size);
         let items_total = paginator.num_items().await.unwrap();
         let models = paginator.fetch_page(param.page_num).await?;
         Ok((models, items_total))
     }
 
-    async fn create(&self, db: &DatabaseConnection, model: E::Model) -> Result<E::Model, DbErr> {
+    async fn create(&self, model: E::Model) -> Result<E::Model, DbErr> {
         // 将 E::Model 转换为 ActiveModel
         let active_model = E::ActiveModel::from(model);
-        active_model.insert(db).await
+        // 启动事务
+        let txn = self.db.begin().await?;
+        // 插入记录
+        let inserted_model = match active_model.insert(&txn).await {
+            Ok(model) => model,
+            Err(e) => {
+                // 出现错误时回滚事务
+                txn.rollback().await?;
+                return Err(e);
+            }
+        };
+        // 提交事务
+        txn.commit().await?;
+        // 返回插入的模型
+        Ok(inserted_model)
     }
 
-    async fn update(&self, db: &DatabaseConnection, model: E::Model) -> Result<E::Model, DbErr> {
+    async fn update(&self, model: E::Model) -> Result<E::Model, DbErr> {
         let active_model: E::ActiveModel = model.into_active_model();
-        active_model.update(db).await
+        // 启动事务
+        let txn = self.db.begin().await?;
+        // 更新记录
+        let updated_model = match active_model.update(&txn).await {
+            Ok(model) => model,
+            Err(e) => {
+                // 如果更新失败，则回滚事务
+                txn.rollback().await?;
+                return Err(e);
+            }
+        };
+        // 提交事务
+        txn.commit().await?;
+        // 返回更新后的模型
+        Ok(updated_model)
     }
 
     async fn update_by_condition<F>(
         &self,
-        db: &DatabaseConnection,
         filter: F,
         column_updates: Vec<(E::Column, Value)>,
     ) -> Result<u64, DbErr>
@@ -129,29 +148,63 @@ where
         F: IntoCondition + Send,
         E: EntityTrait,
     {
+        // 开启事务
+        let txn = self.db.begin().await?;
+
         let mut update_query = E::update_many().filter(filter.into_condition());
 
         for (column, value) in column_updates {
-               update_query = update_query.col_expr(column, Expr::value(value));
-           }
-       
-           let result = update_query.exec(db).await?;
-           Ok(result.rows_affected)
+            update_query = update_query.col_expr(column, Expr::value(value));
+        }
+        // 执行更新操作
+        let result = match update_query.exec(&txn).await {
+            Ok(res) => res,
+            Err(e) => {
+                // 更新失败，回滚事务
+                txn.rollback().await?;
+                return Err(e);
+            }
+        };
+        // 提交事务
+        txn.commit().await?;
+        Ok(result.rows_affected)
     }
 
-    async fn delete(&self, db: &DatabaseConnection, id: Pk) -> Result<DeleteResult, DbErr> {
+    async fn delete(&self, id: Pk) -> Result<DeleteResult, DbErr> {
+        // 开启事务
+        let txn = self.db.begin().await?;
         let id_value = id.into();
-        E::delete_by_id(id_value).exec(db).await
+        // 执行删除操作
+        let result = match E::delete_by_id(id_value).exec(&txn).await {
+            Ok(res) => res,
+            Err(e) => {
+                // 删除失败，回滚事务
+                txn.rollback().await?;
+                return Err(e);
+            }
+        };
+        // 提交事务
+        txn.commit().await?;
+        Ok(result)
     }
 
-    async fn delete_batch<C>(
-        &self,
-        db: &DatabaseConnection,
-        condition: C,
-    ) -> Result<DeleteResult, DbErr>
+    async fn delete_batch<C>(&self, condition: C) -> Result<DeleteResult, DbErr>
     where
         C: IntoCondition + Send,
     {
-        E::delete_many().filter(condition).exec(db).await
+        // 开启事务
+        let txn = self.db.begin().await?;
+        // 执行批量删除操作
+        let result = match E::delete_many().filter(condition).exec(&txn).await {
+            Ok(res) => res,
+            Err(e) => {
+                // 删除失败，回滚事务
+                txn.rollback().await?;
+                return Err(e);
+            }
+        };
+        // 提交事务
+        txn.commit().await?;
+        Ok(result)
     }
 }
