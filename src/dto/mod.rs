@@ -11,7 +11,7 @@ where
     serializer.serialize_str(&value.to_string())
 }
 
-fn serialize_option_i64_as_str<'a, S>(
+pub fn serialize_option_i64_as_str<'a, S>(
     option: &'a Option<i64>,
     serializer: S,
 ) -> Result<S::Ok, S::Error>
@@ -24,7 +24,7 @@ where
     }
 }
 
-fn deserialize_i64_from_str<'de, D>(deserializer: D) -> Result<i64, D::Error>
+pub fn deserialize_i64_from_str<'de, D>(deserializer: D) -> Result<i64, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -33,7 +33,7 @@ where
 }
 
 // 定义一个函数，用于将 JSON 字符串反序列化为 Option<i64>
-fn deserialize_option_i64_from_str<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+pub fn deserialize_option_i64_from_str<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
 where
     D: Deserializer<'de>,
 {
