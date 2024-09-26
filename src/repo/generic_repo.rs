@@ -1,7 +1,7 @@
 use crate::dto::request::{Direction, PageQueryParam};
 use async_trait::async_trait;
 use sea_orm::sea_query::IntoCondition;
-use sea_orm::{prelude::*, DatabaseTransaction, TransactionTrait};
+use sea_orm::{prelude::*, TransactionTrait};
 use sea_orm::{
     ActiveModelTrait, DatabaseConnection, DbErr, EntityTrait, Order, PaginatorTrait,
     PrimaryKeyTrait, QueryFilter, QueryOrder,
@@ -32,25 +32,6 @@ where
             _entity: std::marker::PhantomData,
             _pk: std::marker::PhantomData,
             db,
-        }
-    }
-
-    // 事务操作的通用方法
-    async fn run_in_transaction<T, F>(&self, operation: F) -> Result<T, DbErr>
-    where
-        F: FnOnce(&DatabaseTransaction) -> Result<T, DbErr> + Send,
-    {
-        let txn = self.db.begin().await?;
-        let result = operation(&txn);
-        match result {
-            Ok(res) => {
-                txn.commit().await?;
-                Ok(res)
-            }
-            Err(e) => {
-                txn.rollback().await?;
-                Err(e)
-            }
         }
     }
 }
@@ -114,7 +95,9 @@ where
     where
         F: IntoCondition + Send,
     {
-        let paginator = E::find().filter(filter).paginate(self.db, param.page_size);
+        let paginator = E::find()
+            .filter(filter)
+            .paginate(self.db.as_ref(), param.page_size);
         let items_total = paginator.num_items().await.unwrap();
         let models = paginator.fetch_page(param.page_num).await?;
         Ok((models, items_total))
