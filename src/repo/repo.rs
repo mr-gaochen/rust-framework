@@ -21,7 +21,7 @@ where
         F: IntoCondition + Send;
 
     // 条件统计
-    async fn count_condition(&self, filter: F) -> Result<u64, DbErr>
+    async fn count_condition<F>(&self, filter: F) -> Result<u64, DbErr>
     where
         F: IntoCondition + Send;
 
