@@ -18,6 +18,11 @@ where
     where
         F: IntoCondition + Send;
 
+    /// 条件统计
+    async fn count_condition<F>(&self, filter: F) -> Result<u64, DbErr>
+    where
+        F: IntoCondition + Send;
+
     // 集合查询全量列表
     async fn find_list(&self) -> Result<Vec<E::Model>, DbErr>;
 

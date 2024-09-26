@@ -49,6 +49,13 @@ where
         self.dao.find_one_condition(filter).await
     }
 
+    async fn count_condition<F>(&self, filter: F) -> Result<u64, DbErr>
+    where
+        F: IntoCondition + Send,
+    {
+        self.dao.count_condition(filter).await
+    }
+
     // 集合查询全量列表
     async fn find_list(&self) -> Result<Vec<E::Model>, DbErr> {
         self.dao.find_list().await
