@@ -133,20 +133,25 @@ where
     async fn update_by_id(&self, id: Pk, updated_model: E::Model) -> Result<E::Model, DbErr> {
         // 启动事务
         let txn = self.db.begin().await?;
+
         // 查找要更新的模型
-        let mut active_model = match E::find_by_id(id.into()).one(&txn).await? {
-            Some(model) => model.into_active_model(), // 将模型转换为 ActiveModel
-            None => {
-                txn.rollback().await?; // 如果记录不存在，回滚事务
-                return Err(DbErr::RecordNotFound("Record not found".to_string()));
-                // 返回错误
-            }
-        };
+        // let mut active_model = match E::find_by_id(id.into()).one(&txn).await? {
+        //     Some(model) => model.into_active_model(), // 将模型转换为 ActiveModel
+        //     None => {
+        //         txn.rollback().await?; // 如果记录不存在，回滚事务
+        //         return Err(DbErr::RecordNotFound("Record not found".to_string()));
+        //         // 返回错误
+        //     }
+        // };
 
-        let new_active_model: E::ActiveModel = updated_model.into_active_model();
-        active_model = new_active_model;
+        // 将更新后的模型转换为 ActiveModel
+        let updated_active_model: E::ActiveModel = updated_model.into_active_model();
 
-        // 更新记录
+        // 更新 active_model 的字段
+        let active_model = updated_active_model;
+        // 使用可变引用调用 reset_all() 方法
+        active_model.clone().reset_all(); // This should not consume `active_model`
+                                          // 更新记录
         let updated_model = match active_model.update(&txn).await {
             Ok(model) => model,
             Err(e) => {
@@ -155,10 +160,8 @@ where
                 return Err(e);
             }
         };
-
         // 提交事务
         txn.commit().await?;
-
         // 返回更新后的模型
         Ok(updated_model)
     }
