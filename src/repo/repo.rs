@@ -49,7 +49,7 @@ where
     async fn create(&self, model: E::Model) -> Result<E::Model, DbErr>;
 
     // 更新实体
-    async fn update_by_id(&self,id: Pk, model: E::Model) -> Result<E::Model, DbErr>;
+    async fn update_by_id(&self, model: E::Model) -> Result<E::Model, DbErr>;
 
     // 条件更新
     async fn update_by_condition<F>(

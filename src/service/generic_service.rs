@@ -89,8 +89,8 @@ where
         self.dao.create(model).await
     }
 
-    async fn update_by_id(&self, id: Pk, model: E::Model) -> Result<E::Model, DbErr> {
-        self.dao.update_by_id(id, model).await
+    async fn update_by_id(&self, model: E::Model) -> Result<E::Model, DbErr> {
+        self.dao.update_by_id(model).await
     }
 
     async fn update_by_condition<F>(
