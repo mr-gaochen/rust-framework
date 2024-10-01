@@ -134,7 +134,7 @@ where
         // 启动事务
         let txn = self.db.begin().await?;
         // 将更新后的模型转换为 ActiveModel
-        let mut updated_active_model: E::ActiveModel = updated_model.into_active_model();
+        let updated_active_model: E::ActiveModel = updated_model.into_active_model();
         let reset = updated_active_model.clone().reset_all();
         // 尝试更新模型
         match reset.update(&txn).await {
