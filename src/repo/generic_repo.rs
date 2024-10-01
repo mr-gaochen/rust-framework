@@ -135,9 +135,9 @@ where
         let txn = self.db.begin().await?;
         // 将更新后的模型转换为 ActiveModel
         let mut updated_active_model: E::ActiveModel = updated_model.into_active_model();
-        updated_active_model.reset_all();
+        let reset = updated_active_model.clone().reset_all();
         // 尝试更新模型
-        match updated_active_model.update(&txn).await {
+        match reset.update(&txn).await {
             Ok(model) => {
                 // 提交事务
                 txn.commit().await?;
