@@ -125,14 +125,31 @@ where
     where
         F: IntoCondition + Send,
     {
-        let mut select = E::find().filter(filter);
+        // let mut select = E::find().filter(filter);
 
-        // 动态应用排序
-        if let Some((order_expr, order)) =
-            build_order_by::<E>(param.sort_by.clone(), param.sort_direction)
-        {
-            select = select.order_by(order_expr, order);
+        // // 动态应用排序
+        // if let Some((order_expr, order)) =
+        //     build_order_by::<E>(param.sort_by.clone(), param.sort_direction)
+        // {
+        //     select = select.order_by(order_expr, order);
+        // }
+        //
+        // 创建基础查询
+        let mut select = E::find();
+
+        // 处理排序逻辑
+        if let Some(sort_by) = &param.sort_by {
+            // 尝试将字符串解析为 E::Column
+            if let Ok(column) = sort_by.parse::<E::Column>() {
+                let order = match param.sort_direction.unwrap_or(Direction::ASC) {
+                    Direction::DESC => Order::Desc,
+                    Direction::ASC => Order::Asc,
+                };
+                select = select.order_by(column, order); // 先进行排序
+            }
         }
+        // 添加过滤条件
+        select = select.filter(filter.into_condition());
 
         let paginator = select.paginate(self.db.as_ref(), param.page_size);
         let items_total = paginator.num_items().await.unwrap();
