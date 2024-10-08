@@ -1,7 +1,8 @@
 use crate::dto::request::{Direction, PageQueryParam};
 use async_trait::async_trait;
-use sea_orm::sea_query::IntoCondition;
-use sea_orm::{prelude::*, Set, TransactionTrait};
+use sea_orm::sea_query::{Expr, IntoCondition};
+use sea_orm::{prelude::*, TransactionTrait};
+
 use sea_orm::{
     ActiveModelTrait, DatabaseConnection, DbErr, EntityTrait, Order, PaginatorTrait,
     PrimaryKeyTrait, QueryFilter, QueryOrder,
@@ -34,6 +35,28 @@ where
             db,
         }
     }
+}
+
+// 动态构建排序表达式的辅助函数
+fn build_order_by<E: EntityTrait>(
+    sort_by: Option<String>,
+    sort_direction: Option<Direction>,
+) -> Option<(E::Column, Order)>
+where
+    E::Column: ColumnTrait, // 需要 Column 支持 EnumString
+{
+    if let Some(sort_by_field) = sort_by {
+        // 将传入的字段名转换为 Column 枚举
+        if let Ok(column) = sort_by_field.parse::<E::Column>() {
+            // 根据排序方向生成 Order
+            let order = match sort_direction.unwrap_or(Direction::ASC) {
+                Direction::DESC => Order::Desc,
+                Direction::ASC => Order::Asc,
+            };
+            return Some((column, order));
+        }
+    }
+    None
 }
 
 #[async_trait]
@@ -102,9 +125,16 @@ where
     where
         F: IntoCondition + Send,
     {
-        let paginator = E::find()
-            .filter(filter)
-            .paginate(self.db.as_ref(), param.page_size);
+        let mut select = E::find().filter(filter);
+
+        // 动态应用排序
+        if let Some((order_expr, order)) =
+            build_order_by::<E>(param.sort_by.clone(), param.sort_direction)
+        {
+            select = select.order_by(order_expr, order);
+        }
+
+        let paginator = select.paginate(self.db.as_ref(), param.page_size);
         let items_total = paginator.num_items().await.unwrap();
         let models = paginator.fetch_page(param.page_num).await?;
         Ok((models, items_total))
