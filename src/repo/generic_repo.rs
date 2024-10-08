@@ -141,7 +141,7 @@ where
         if let Some(sort_by) = &param.sort_by {
             // 尝试将字符串解析为 E::Column
             if let Ok(column) = sort_by.parse::<E::Column>() {
-                let order = match param.sort_direction.unwrap_or(Direction::ASC) {
+                let order = match param.sort_direction.unwrap_or(Direction::DESC) {
                     Direction::DESC => Order::Desc,
                     Direction::ASC => Order::Asc,
                 };
