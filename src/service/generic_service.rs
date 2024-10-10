@@ -1,7 +1,6 @@
 use crate::dto::response::ObjCount;
 use crate::{dto::request::PageQueryParam, repo::repo::Repo};
 use async_trait::async_trait;
-use either::Either;
 use sea_orm::prelude::*;
 use sea_orm::{sea_query::IntoCondition, DbErr, DeleteResult, EntityTrait, PrimaryKeyTrait};
 
@@ -61,15 +60,13 @@ where
     async fn count_condition_group<F>(
         &self,
         filter: F,
-        select_columns: Option<Vec<(Either<E::Column, Expr>, &str)>>, // 修改为支持 Expr 和 Column
         group_by_column: Option<E::Column>,
-        count_column: Option<E::Column>,
     ) -> Result<Vec<ObjCount>, DbErr>
     where
         F: IntoCondition + Send,
     {
         self.dao
-            .count_condition_group(filter, select_columns, group_by_column, count_column)
+            .count_condition_group(filter, group_by_column)
             .await
     }
 
