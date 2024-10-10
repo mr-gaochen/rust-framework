@@ -48,6 +48,6 @@ impl<T> PageResponse<T> {
 
 #[derive(Debug, FromQueryResult)]
 pub struct ObjCount {
-    pub id: i64,
+    pub obj_id: i64,
     pub count: i64,
 }
