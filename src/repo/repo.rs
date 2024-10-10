@@ -1,4 +1,5 @@
 use crate::dto::request::PageQueryParam;
+use crate::dto::response::ObjCount;
 use async_trait::async_trait;
 use sea_orm::prelude::*;
 use sea_orm::sea_query::IntoCondition;
@@ -22,6 +23,15 @@ where
 
     // 条件统计
     async fn count_condition<F>(&self, filter: F) -> Result<u64, DbErr>
+    where
+        F: IntoCondition + Send;
+
+    async fn count_condition_group<F>(
+        &self,
+        filter: F,
+        select_columns: Option<Vec<(E::Column, &str)>>,
+        group_by_column: Option<E::Column>,
+    ) -> Result<Vec<ObjCount>, DbErr>
     where
         F: IntoCondition + Send;
 

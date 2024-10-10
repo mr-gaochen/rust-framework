@@ -1,3 +1,4 @@
+use sea_orm::FromQueryResult;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -43,4 +44,10 @@ impl<T> PageResponse<T> {
             total: self.total,
         }
     }
+}
+
+#[derive(Debug, FromQueryResult)]
+pub struct ObjCount {
+    pub id: i64,
+    pub count: i64,
 }

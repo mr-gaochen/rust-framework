@@ -1,3 +1,4 @@
+use crate::dto::response::ObjCount;
 use crate::{dto::request::PageQueryParam, repo::repo::Repo};
 use async_trait::async_trait;
 use sea_orm::prelude::*;
@@ -54,6 +55,20 @@ where
         F: IntoCondition + Send,
     {
         self.dao.count_condition(filter).await
+    }
+
+    async fn count_condition_group<F>(
+        &self,
+        filter: F,
+        select_columns: Option<Vec<(E::Column, &str)>>,
+        group_by_column: Option<E::Column>,
+    ) -> Result<Vec<ObjCount>, DbErr>
+    where
+        F: IntoCondition + Send,
+    {
+        self.dao
+            .count_condition_group(filter, select_columns, group_by_column)
+            .await
     }
 
     // 集合查询全量列表

@@ -1,7 +1,8 @@
 use crate::dto::request::{Direction, PageQueryParam};
+use crate::dto::response::ObjCount;
 use async_trait::async_trait;
 use sea_orm::sea_query::{Expr, IntoCondition};
-use sea_orm::{prelude::*, TransactionTrait};
+use sea_orm::{prelude::*, QuerySelect, TransactionTrait};
 
 use sea_orm::{
     ActiveModelTrait, DatabaseConnection, DbErr, EntityTrait, Order, PaginatorTrait,
@@ -37,28 +38,6 @@ where
     }
 }
 
-// 动态构建排序表达式的辅助函数
-fn build_order_by<E: EntityTrait>(
-    sort_by: Option<String>,
-    sort_direction: Option<Direction>,
-) -> Option<(E::Column, Order)>
-where
-    E::Column: ColumnTrait, // 需要 Column 支持 EnumString
-{
-    if let Some(sort_by_field) = sort_by {
-        // 将传入的字段名转换为 Column 枚举
-        if let Ok(column) = sort_by_field.parse::<E::Column>() {
-            // 根据排序方向生成 Order
-            let order = match sort_direction.unwrap_or(Direction::ASC) {
-                Direction::DESC => Order::Desc,
-                Direction::ASC => Order::Asc,
-            };
-            return Some((column, order));
-        }
-    }
-    None
-}
-
 #[async_trait]
 impl<E, Pk> Repo<E, Pk> for GenericRepo<E, Pk>
 where
@@ -84,6 +63,31 @@ where
         F: IntoCondition + Send,
     {
         E::find().filter(filter).count(self.db.as_ref()).await
+    }
+
+    async fn count_condition_group<F>(
+        &self,
+        filter: F,
+        select_columns: Option<Vec<(E::Column, &str)>>,
+        group_by_column: Option<E::Column>,
+    ) -> Result<Vec<ObjCount>, DbErr>
+    where
+        F: IntoCondition + Send,
+    {
+        let mut query = E::find().filter(filter);
+        // 如果提供了 select 列，则构建 select 部分
+        if let Some(columns) = select_columns {
+            query = query.select_only();
+            for (col, alias) in columns {
+                query = query.column_as(col, alias)
+            }
+        }
+        // 如果提供了 group by 列，则进行分组
+        if let Some(group_by) = group_by_column {
+            query = query.group_by(group_by);
+        }
+        let result: Vec<ObjCount> = query.into_model().all(self.db.as_ref()).await?;
+        Ok(result)
     }
 
     async fn find_list(&self) -> Result<Vec<E::Model>, DbErr> {
@@ -126,17 +130,6 @@ where
         F: IntoCondition + Send,
     {
         let mut select = E::find().filter(filter);
-
-        // 动态应用排序
-        // if let Some((order_expr, order)) =
-        //     build_order_by::<E>(param.sort_by.clone(), param.sort_direction)
-        // {
-        //     select = select.order_by(order_expr, order);
-        // }
-        //
-        // // 创建基础查询
-        // let mut select = E::find();
-
         // // 处理排序逻辑
         if let Some(sort_by) = &param.sort_by {
             // 尝试将字符串解析为 E::Column
@@ -148,9 +141,6 @@ where
                 select = select.order_by(column, order); // 先进行排序
             }
         }
-        // // 添加过滤条件
-        // select = select.filter(filter.into_condition());
-
         let paginator = select.paginate(self.db.as_ref(), param.page_size);
         let items_total = paginator.num_items().await.unwrap();
         let models = paginator.fetch_page(param.page_num).await?;
