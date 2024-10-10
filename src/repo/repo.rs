@@ -64,6 +64,11 @@ where
     // 删除实体
     async fn delete(&self, id: Pk) -> Result<DeleteResult, DbErr>;
 
+    // 条件删除
+    async fn delete_by_condition<F>(&self, filter: F) -> Result<DeleteResult, DbErr>
+    where
+        F: IntoCondition + Send;
+
     // 批量删除
     async fn delete_batch<C>(&self, condition: C) -> Result<DeleteResult, DbErr>
     where

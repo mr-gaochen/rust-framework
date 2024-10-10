@@ -108,6 +108,13 @@ where
         self.dao.delete(id).await
     }
 
+    async fn delete_by_condition<F>(&self, filter: F) -> Result<DeleteResult, DbErr>
+    where
+        F: IntoCondition + Send,
+    {
+        self.dao.delete_by_condition(filter).await
+    }
+
     async fn delete_batch<C>(&self, condition: C) -> Result<DeleteResult, DbErr>
     where
         C: IntoCondition + Send,

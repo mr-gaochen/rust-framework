@@ -125,19 +125,19 @@ where
     where
         F: IntoCondition + Send,
     {
-        // let mut select = E::find().filter(filter);
+        let mut select = E::find().filter(filter);
 
-        // // 动态应用排序
+        // 动态应用排序
         // if let Some((order_expr, order)) =
         //     build_order_by::<E>(param.sort_by.clone(), param.sort_direction)
         // {
         //     select = select.order_by(order_expr, order);
         // }
         //
-        // 创建基础查询
-        let mut select = E::find();
+        // // 创建基础查询
+        // let mut select = E::find();
 
-        // 处理排序逻辑
+        // // 处理排序逻辑
         if let Some(sort_by) = &param.sort_by {
             // 尝试将字符串解析为 E::Column
             if let Ok(column) = sort_by.parse::<E::Column>() {
@@ -148,8 +148,8 @@ where
                 select = select.order_by(column, order); // 先进行排序
             }
         }
-        // 添加过滤条件
-        select = select.filter(filter.into_condition());
+        // // 添加过滤条件
+        // select = select.filter(filter.into_condition());
 
         let paginator = select.paginate(self.db.as_ref(), param.page_size);
         let items_total = paginator.num_items().await.unwrap();
@@ -236,6 +236,26 @@ where
         let id_value = id.into();
         // 执行删除操作
         let result = match E::delete_by_id(id_value).exec(&txn).await {
+            Ok(res) => res,
+            Err(e) => {
+                // 删除失败，回滚事务
+                txn.rollback().await?;
+                return Err(e);
+            }
+        };
+        // 提交事务
+        txn.commit().await?;
+        Ok(result)
+    }
+
+    async fn delete_by_condition<F>(&self, filter: F) -> Result<DeleteResult, DbErr>
+    where
+        F: IntoCondition + Send,
+    {
+        // 开启事务
+        let txn = self.db.begin().await?;
+        // 执行删除操作
+        let result = match E::delete_many().filter(filter).exec(&txn).await {
             Ok(res) => res,
             Err(e) => {
                 // 删除失败，回滚事务
