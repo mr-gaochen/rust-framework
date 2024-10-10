@@ -1,6 +1,7 @@
 use crate::dto::request::{Direction, PageQueryParam};
 use crate::dto::response::ObjCount;
 use async_trait::async_trait;
+use either::Either;
 use sea_orm::sea_query::{Expr, IntoCondition};
 use sea_orm::{prelude::*, QuerySelect, TransactionTrait};
 
@@ -68,8 +69,9 @@ where
     async fn count_condition_group<F>(
         &self,
         filter: F,
-        select_columns: Option<Vec<(E::Column, &str)>>,
+        select_columns: Option<Vec<(Either<E::Column, Expr>, &str)>>, // 修改为支持 Expr 和 Column
         group_by_column: Option<E::Column>,
+        count_column: Option<E::Column>, // 新增 count_column 参数
     ) -> Result<Vec<ObjCount>, DbErr>
     where
         F: IntoCondition + Send,
@@ -78,13 +80,21 @@ where
         // 如果提供了 select 列，则构建 select 部分
         if let Some(columns) = select_columns {
             query = query.select_only();
-            for (col, alias) in columns {
-                query = query.column_as(col, alias)
+            for (col_or_expr, alias) in columns {
+                match col_or_expr {
+                    Either::Left(col) => query = query.column_as(col, alias), // 处理 Column
+                    Either::Right(expr) => query = query.expr_as(expr, alias), // 处理 Expr
+                }
             }
         }
         // 如果提供了 group by 列，则进行分组
         if let Some(group_by) = group_by_column {
             query = query.group_by(group_by);
+        }
+
+        // 如果提供了 count_column，则添加 count
+        if let Some(count_col) = count_column {
+            query = query.expr_as(Expr::col(count_col).count(), "count"); // 添加 count 列
         }
         let result: Vec<ObjCount> = query.into_model().all(self.db.as_ref()).await?;
         Ok(result)
