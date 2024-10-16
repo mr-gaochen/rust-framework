@@ -9,7 +9,6 @@ use sea_orm::{
     PrimaryKeyTrait, QueryFilter, QueryOrder,
 };
 use sea_orm::{DeleteResult, IntoActiveModel};
-use std::sync::Arc;
 
 use super::repo::Repo;
 
@@ -21,7 +20,7 @@ where
 {
     _entity: std::marker::PhantomData<E>,
     _pk: std::marker::PhantomData<Pk>,
-    db: Arc<DatabaseConnection>,
+    db: &'static DatabaseConnection,
 }
 
 impl<E, Pk> GenericRepo<E, Pk>
@@ -29,7 +28,7 @@ where
     E: EntityTrait,
     Pk: Into<<E::PrimaryKey as PrimaryKeyTrait>::ValueType> + Send + Sync + Clone,
 {
-    pub fn new(db: Arc<DatabaseConnection>) -> Self {
+    pub fn new(db: &'static DatabaseConnection) -> Self {
         Self {
             _entity: std::marker::PhantomData,
             _pk: std::marker::PhantomData,
@@ -48,21 +47,21 @@ where
 {
     async fn find_by_id(&self, id: Pk) -> Result<Option<E::Model>, DbErr> {
         let id_value = id.into();
-        E::find_by_id(id_value).one(self.db.as_ref()).await
+        E::find_by_id(id_value).one(self.db).await
     }
 
     async fn find_one_condition<F>(&self, filter: F) -> Result<Option<E::Model>, DbErr>
     where
         F: IntoCondition + Send,
     {
-        E::find().filter(filter).one(self.db.as_ref()).await
+        E::find().filter(filter).one(self.db).await
     }
 
     async fn count_condition<F>(&self, filter: F) -> Result<u64, DbErr>
     where
         F: IntoCondition + Send,
     {
-        E::find().filter(filter).count(self.db.as_ref()).await
+        E::find().filter(filter).count(self.db).await
     }
 
     async fn count_condition_group<F>(
@@ -84,23 +83,20 @@ where
                 .expr_as(Expr::col(group_by).count(), "count");
         }
 
-        let results: Vec<ObjCount> = query.into_model().all(self.db.as_ref()).await?;
+        let results: Vec<ObjCount> = query.into_model().all(self.db).await?;
 
         Ok(results)
     }
 
     async fn find_list(&self) -> Result<Vec<E::Model>, DbErr> {
-        E::find().all(self.db.as_ref()).await
+        E::find().all(self.db).await
     }
 
     async fn find_by_list_condition<F>(&self, filter: F) -> Result<Vec<E::Model>, DbErr>
     where
         F: IntoCondition + Send,
     {
-        E::find()
-            .filter(filter.into_condition())
-            .all(self.db.as_ref())
-            .await
+        E::find().filter(filter.into_condition()).all(self.db).await
     }
 
     async fn find_page(&self, param: &PageQueryParam) -> Result<(Vec<E::Model>, u64), DbErr> {
@@ -114,7 +110,7 @@ where
                 _ => select = select.order_by(order_expr, Order::Asc),
             }
         }
-        let paginator = select.paginate(self.db.as_ref(), param.page_size);
+        let paginator = select.paginate(self.db, param.page_size);
         let items_total = paginator.num_items().await.unwrap();
         let models = paginator.fetch_page(param.page_num).await?;
         Ok((models, items_total))
@@ -140,7 +136,7 @@ where
                 select = select.order_by(column, order); // 先进行排序
             }
         }
-        let paginator = select.paginate(self.db.as_ref(), param.page_size);
+        let paginator = select.paginate(self.db, param.page_size);
         let items_total = paginator.num_items().await.unwrap();
         let models = paginator.fetch_page(param.page_num).await?;
         Ok((models, items_total))
