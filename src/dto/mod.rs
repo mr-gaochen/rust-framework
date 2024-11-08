@@ -1,4 +1,4 @@
-use serde::{de, Deserialize, Deserializer, Serializer};
+use serde::{de, ser::SerializeSeq, Deserialize, Deserializer, Serializer};
 
 pub mod request;
 pub mod response;
@@ -49,27 +49,33 @@ pub fn deserialize_vec_i64_from_str<'de, D>(deserializer: D) -> Result<Vec<i64>,
 where
     D: Deserializer<'de>,
 {
-    let s: String = String::deserialize(deserializer)?;
-    if s.is_empty() {
-        // 如果字符串为空，返回空的 Vec
-        Ok(Vec::new())
-    } else {
-        // 拆分字符串并尝试将每个部分解析为 i64
-        s.split(',')
-            .map(|part| part.trim().parse::<i64>().map_err(de::Error::custom))
-            .collect()
-    }
+    // 尝试先将输入作为 Vec<String> 反序列化
+    let vec_of_strings: Vec<String> = Vec::deserialize(deserializer)?;
+
+    // 遍历每个字符串并尝试将其解析为 i64
+    vec_of_strings
+        .into_iter()
+        .map(|s| s.parse::<i64>().map_err(de::Error::custom))
+        .collect()
 }
 
 pub fn deserialize_vec_string_from_i64<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let s: String = String::deserialize(deserializer)?;
+    // 先将输入作为 Vec<i64> 反序列化
+    let vec_of_i64: Vec<i64> = Vec::deserialize(deserializer)?;
+    // 将每个 i64 转换为 String
+    Ok(vec_of_i64.into_iter().map(|num| num.to_string()).collect())
+}
 
-    if s.is_empty() {
-        Ok(Vec::new())
-    } else {
-        Ok(s.split(',').map(|part| part.trim().to_string()).collect())
+pub fn serializer_vec_string_from_i64<S>(value: &Vec<i64>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let mut seq = serializer.serialize_seq(Some(value.len()))?;
+    for &num in value {
+        seq.serialize_element(&num.to_string())?;
     }
+    seq.end()
 }
