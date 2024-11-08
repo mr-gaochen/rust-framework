@@ -37,13 +37,39 @@ pub fn deserialize_option_i64_from_str<'de, D>(deserializer: D) -> Result<Option
 where
     D: Deserializer<'de>,
 {
-    let s = String::deserialize(deserializer)?;
+    let opt_str: Option<String> = Option::deserialize(deserializer)?;
+
+    match opt_str {
+        Some(s) if !s.is_empty() => s.parse::<i64>().map(Some).map_err(de::Error::custom),
+        _ => Ok(None), // 字符串为空或字段缺失时返回 None
+    }
+}
+
+pub fn deserialize_vec_i64_from_str<'de, D>(deserializer: D) -> Result<Vec<i64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: String = String::deserialize(deserializer)?;
+    if s.is_empty() {
+        // 如果字符串为空，返回空的 Vec
+        Ok(Vec::new())
+    } else {
+        // 拆分字符串并尝试将每个部分解析为 i64
+        s.split(',')
+            .map(|part| part.trim().parse::<i64>().map_err(de::Error::custom))
+            .collect()
+    }
+}
+
+pub fn deserialize_vec_string_from_i64<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: String = String::deserialize(deserializer)?;
 
     if s.is_empty() {
-        // 如果字符串为空，返回 None
-        Ok(None)
+        Ok(Vec::new())
     } else {
-        // 尝试将字符串解析为 i64
-        s.parse::<i64>().map(Some).map_err(de::Error::custom)
+        Ok(s.split(',').map(|part| part.trim().to_string()).collect())
     }
 }
