@@ -103,9 +103,6 @@ where
         self.dao.create(model).await
     }
 
-    async fn create_batch(&self, models: Vec<E::Model>) -> Result<Vec<E::Model>, DbErr> {
-        self.dao.create(models).await
-    }
 
     async fn update_by_id(&self, model: E::Model) -> Result<E::Model, DbErr> {
         self.dao.update_by_id(model).await

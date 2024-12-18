@@ -162,32 +162,6 @@ where
         Ok(inserted_model)
     }
 
-    async fn create_batch(&self, models: Vec<E::Model>) -> Result<Vec<E::Model>, DbErr> {
-        // 将 E::Model 转换为 ActiveModel
-        let active_models: Vec<E::ActiveModel> = models.into_iter().map(E::ActiveModel::from).collect();
-        // 启动事务
-        let txn = self.db.begin().await?;
-        // 逐个插入
-        let mut inserted_models = Vec::new();
-        for active_model in active_models {
-            let inserted_model = match active_model.insert(&txn).await {
-                Ok(model) => model,
-                Err(e) => {
-                    // 发生错误时回滚事务
-                    txn.rollback().await?;
-                    return Err(e);
-                }
-            };
-            inserted_models.push(inserted_model);
-        }
-
-        // 提交事务
-        txn.commit().await?;
-        // 返回插入的模型
-        Ok(inserted_models)
-    }
-
-
     async fn update_by_id(&self, updated_model: E::Model) -> Result<E::Model, DbErr> {
         // 启动事务
         let txn = self.db.begin().await?;
