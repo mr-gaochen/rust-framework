@@ -167,15 +167,20 @@ where
         let active_models: Vec<E::ActiveModel> = models.into_iter().map(E::ActiveModel::from).collect();
         // 启动事务
         let txn = self.db.begin().await?;
-        // 批量插入记录
-        let inserted_models = match E::ActiveModel::insert(active_models, &txn).await {
-            Ok(models) => models,
-            Err(e) => {
-                // 出现错误时回滚事务
-                txn.rollback().await?;
-                return Err(e);
-            }
-        };
+        // 逐个插入
+        let mut inserted_models = Vec::new();
+        for active_model in active_models {
+            let inserted_model = match active_model.insert(&txn).await {
+                Ok(model) => model,
+                Err(e) => {
+                    // 发生错误时回滚事务
+                    txn.rollback().await?;
+                    return Err(e);
+                }
+            };
+            inserted_models.push(inserted_model);
+        }
+
         // 提交事务
         txn.commit().await?;
         // 返回插入的模型
