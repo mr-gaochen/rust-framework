@@ -54,8 +54,6 @@ where
     // 创建新实体
     async fn create(&self, model: E::Model) -> Result<E::Model, DbErr>;
 
-    async fn create_batch(&self, models: Vec<E::Model>) -> Result<Vec<E::Model>, DbErr>;
-
     // 更新实体
     async fn update_by_id(&self, model: E::Model) -> Result<E::Model, DbErr>;
 
