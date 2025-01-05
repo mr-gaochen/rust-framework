@@ -162,6 +162,23 @@ where
         Ok(inserted_model)
     }
 
+    async fn create_batch(&self, models: Vec<E::Model>) -> Result<(), DbErr> {
+        // 将 E::Model 转换为 ActiveModel
+        let active_models: Vec<E::ActiveModel> =
+            models.into_iter().map(|m| m.into_active_model()).collect();
+        // 启动事务
+        let txn = self.db.begin().await?;
+        // 使用 insert_many 批量插入
+        if let Err(e) = E::insert_many(active_models).exec(&txn).await {
+            // 如果插入失败，回滚事务
+            txn.rollback().await?;
+            return Err(e);
+        }
+        // 提交事务
+        txn.commit().await?;
+        Ok(())
+    }
+
     async fn update_by_id(&self, updated_model: E::Model) -> Result<E::Model, DbErr> {
         // 启动事务
         let txn = self.db.begin().await?;
