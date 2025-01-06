@@ -3,7 +3,7 @@ use crate::dto::response::ObjCount;
 use async_trait::async_trait;
 use sea_orm::prelude::*;
 use sea_orm::sea_query::IntoCondition;
-use sea_orm::DeleteResult;
+use sea_orm::{DatabaseTransaction, DeleteResult};
 use sea_orm::{DbErr, EntityTrait, PrimaryKeyTrait};
 
 /// 定义 Dao Trait，泛型 E 是 Entity 类型，Pk 是主键类型
@@ -56,6 +56,7 @@ where
 
     // 创建新实体
     async fn create(&self, model: E::Model) -> Result<E::Model, DbErr>;
+    async fn create_txn(&self, model: E::Model, txn: &DatabaseTransaction) -> Result<E::Model, DbErr>;
 
     // 批量创建新实体
     async fn create_batch(&self, models: Vec<E::Model>) -> Result<(),DbErr>;

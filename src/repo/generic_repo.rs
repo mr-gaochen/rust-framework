@@ -2,7 +2,7 @@ use crate::dto::request::{Direction, PageQueryParam};
 use crate::dto::response::ObjCount;
 use async_trait::async_trait;
 use sea_orm::sea_query::{Expr, IntoCondition};
-use sea_orm::{prelude::*, QuerySelect, TransactionTrait};
+use sea_orm::{prelude::*, DatabaseTransaction, QuerySelect, TransactionTrait};
 
 use sea_orm::{
     ActiveModelTrait, DatabaseConnection, DbErr, EntityTrait, Order, PaginatorTrait,
@@ -145,20 +145,20 @@ where
     async fn create(&self, model: E::Model) -> Result<E::Model, DbErr> {
         // 将 E::Model 转换为 ActiveModel
         let active_model = E::ActiveModel::from(model);
-        // 启动事务
-        let txn = self.db.begin().await?;
-        // 插入记录
-        let inserted_model = match active_model.insert(&txn).await {
+        let inserted_model = match active_model.insert(self.db).await {
             Ok(model) => model,
-            Err(e) => {
-                // 出现错误时回滚事务
-                txn.rollback().await?;
-                return Err(e);
-            }
+            Err(e) => return Err(e.into()),
         };
-        // 提交事务
-        txn.commit().await?;
-        // 返回插入的模型
+        Ok(inserted_model)
+    }
+
+    async fn create_txn(&self, model: E::Model, txn: &DatabaseTransaction) -> Result<E::Model, DbErr> {
+        // 将 E::Model 转换为 ActiveModel
+        let active_model = E::ActiveModel::from(model);
+        let inserted_model = match active_model.insert(txn).await{
+            Ok(model) => model,
+            Err(e) => return Err(e.into()),
+        };
         Ok(inserted_model)
     }
 
@@ -168,8 +168,6 @@ where
             models.into_iter().map(|m| m.into_active_model()).collect();
         // 启动事务
         let txn = self.db.begin().await?;
-
-
         // 分批插入，避免超出数据库限制
         let batch_size = 500; // 每批插入 500 条，根据需要调整
         for chunk in active_models.chunks(batch_size) {
@@ -184,7 +182,6 @@ where
         }
 
         if let Err(commit_err) = txn.commit().await {
-            error!("Transaction commit failed: {:?}", commit_err);
             return Err(commit_err);
         }
         Ok(())
