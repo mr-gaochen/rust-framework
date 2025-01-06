@@ -186,6 +186,25 @@ where
         }
         Ok(())
     }
+    async fn create_batch_txn(
+        &self,
+        models: Vec<E::Model>,
+        txn: &DatabaseTransaction,
+    ) -> Result<(), DbErr> {
+        // 将 E::Model 转换为 ActiveModel
+        let active_models: Vec<E::ActiveModel> = models
+            .into_iter()
+            .map(|m| m.into_active_model())
+            .collect();
+
+        // 分批插入，避免超出数据库限制（每批 500 条）
+        let batch_size = 500; // 根据数据库最大批量限制设置
+        for chunk in active_models.chunks(batch_size) {
+            E::insert_many(chunk.to_vec()).exec(txn).await?;
+        }
+        Ok(())
+    }
+
 
     async fn update_by_id(&self, updated_model: E::Model) -> Result<E::Model, DbErr> {
         // 启动事务

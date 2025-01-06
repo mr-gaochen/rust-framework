@@ -58,6 +58,8 @@ where
     async fn create(&self, model: E::Model) -> Result<E::Model, DbErr>;
     async fn create_txn(&self, model: E::Model, txn: &DatabaseTransaction) -> Result<E::Model, DbErr>;
 
+    async fn create_batch_txn(&self, model: Vec<E::Model>, txn: &DatabaseTransaction) -> Result<E::Model, DbErr>;
+
     // 批量创建新实体
     async fn create_batch(&self, models: Vec<E::Model>) -> Result<(),DbErr>;
 
