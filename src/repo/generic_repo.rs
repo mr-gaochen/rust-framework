@@ -168,15 +168,25 @@ where
             models.into_iter().map(|m| m.into_active_model()).collect();
         // 启动事务
         let txn = self.db.begin().await?;
-        // 使用 insert_many 批量插入
-        if let Err(e) = E::insert_many(active_models).exec(&txn).await {
-            error!("insert failed:{:?}", e);
-            // 如果插入失败，回滚事务
-            txn.rollback().await?;
-            return Err(e);
+
+
+        // 分批插入，避免超出数据库限制
+        let batch_size = 500; // 每批插入 500 条，根据需要调整
+        for chunk in active_models.chunks(batch_size) {
+            if let Err(e) = E::insert_many(chunk.to_vec()).exec(&txn).await {
+                error!("Insert failed: {:?}", e);
+                // 插入失败时回滚事务
+                if let Err(rollback_err) = txn.rollback().await {
+                    error!("Rollback failed: {:?}", rollback_err);
+                }
+                return Err(e); // 返回原始错误
+            }
         }
-        // 提交事务
-        txn.commit().await?;
+
+        if let Err(commit_err) = txn.commit().await {
+            error!("Transaction commit failed: {:?}", commit_err);
+            return Err(commit_err);
+        }
         Ok(())
     }
 
