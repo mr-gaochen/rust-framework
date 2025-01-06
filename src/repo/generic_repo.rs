@@ -9,7 +9,7 @@ use sea_orm::{
     PrimaryKeyTrait, QueryFilter, QueryOrder,
 };
 use sea_orm::{DeleteResult, IntoActiveModel};
-
+use tracing::error;
 use super::repo::Repo;
 
 // 实现一个泛型的 repo
@@ -170,6 +170,7 @@ where
         let txn = self.db.begin().await?;
         // 使用 insert_many 批量插入
         if let Err(e) = E::insert_many(active_models).exec(&txn).await {
+            error!("insert failed:{:?}", e);
             // 如果插入失败，回滚事务
             txn.rollback().await?;
             return Err(e);
